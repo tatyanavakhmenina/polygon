@@ -1,14 +1,14 @@
-#include <iostream>  // Импортирование библиотеки (не влияет на сложность)
-#include <vector>    // Импортирование библиотеки (не влияет на сложность)
-#include <string>    // Импортирование библиотеки (не влияет на сложность)
-#include <sstream>   // Импортирование библиотеки (не влияет на сложность)
-#include <fstream>   // Импортирование библиотеки (не влияет на сложность)
-#include <unordered_map>  // Импортирование библиотеки (не влияет на сложность)
-#include <unordered_set>  // Импортирование библиотеки (не влияет на сложность)
-#include <queue>     // Импортирование библиотеки (не влияет на сложность)
-#include <cmath>     // Импортирование библиотеки (не влияет на сложность)
-#include <limits>    // Импортирование библиотеки (не влияет на сложность)
-#include <cassert>   // Импортирование библиотеки (не влияет на сложность)
+#include <iostream>  
+#include <vector>    
+#include <string>    
+#include <sstream>  
+#include <fstream>   
+#include <unordered_map> 
+#include <unordered_set>  
+#include <queue>     
+#include <cmath>     
+#include <limits>   
+#include <cassert>   
 
 using namespace std;
 
