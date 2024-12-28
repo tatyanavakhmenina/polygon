@@ -1,253 +1,219 @@
 #include <iostream>
-#include <fstream>
-#include <sstream>
 #include <vector>
 #include <string>
-#include <cmath>
+#include <sstream>
+#include <fstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <queue>
-#include <stack>
-#include <set>
+#include <cmath>
 #include <limits>
+#include <chrono>
 
-// Определение структуры узла графа
+using namespace std;
+
+// Узел графа
 struct Node {
-    double lon, lat; // Долгота и широта узла
-    std::vector<std::pair<Node*, double>> neighbors; // Список соседей и расстояний до них
+    double lon, lat;                          // Координаты узла (O(1) по памяти на узел) (2 переменные double по 8 байт каждая, итого 16 байт)
+    vector<pair<Node*, double>> neighbors;    // Список соседей с весами рёбер (O(E) памяти, где E — количество рёбер для узла)  std::vector занимает 24 байта пустым, + 16 байт на каждый элемент)
 };
 
-// Вычисление географического расстояния (Haversine formula)
-double haversine(double lat1, double lon1, double lat2, double lon2) {
-    const double R = 6371.0; // Радиус Земли в километрах
-    double dLat = (lat2 - lat1) * M_PI / 180.0;
-    double dLon = (lon2 - lon1) * M_PI / 180.0;
-    lat1 = lat1 * M_PI / 180.0;
-    lat2 = lat2 * M_PI / 180.0;
+// Класс для представления графа
+class Graph {
+public:
+    vector<Node*> nodes; // Список всех узлов (O(V) по памяти, где V — количество узлов) (std::vector занимает 24 байта пустым, + 8 байт на каждый элемент Node*)
+    unordered_map<string, Node*> nodeMap; // Хэш-таблица для быстрого доступа к узлам по ключу (O(V) по памяти) (std::unordered_map занимает ~56 байт пустым, + 32 байта на ключ std::string + 8 байт на Node*)
 
-    double a = std::sin(dLat / 2) * std::sin(dLat / 2) +
-               std::sin(dLon / 2) * std::sin(dLon / 2) * std::cos(lat1) * std::cos(lat2);
-    double c = 2 * std::atan2(std::sqrt(a), std::sqrt(1 - a));
-    return R * c;
+    // Загрузка графа из файла
+    void loadFromFile(const string& filename) {
+        ifstream file(filename); // Открытие файла (O(1) по памяти)
+        if (!file.is_open()) {
+            cerr << "Ошибка открытия файла: " << filename << endl;
+            return;
+        }
+
+        string line; //(std::string ~32 байта пустым)
+        while (getline(file, line)) { // Проходим по каждой строке файла (O(V + E) по времени)
+            stringstream ss(line); // Поток для обработки строки (std::stringstream ~40 байт пустым)
+            string parentStr, edgeStr; //  (2 std::string по ~32 байта каждая пустыми)
+
+            getline(ss, parentStr, ':');
+            double parentLon, parentLat; // Переменные для координат (2 переменные double по 8 байт каждая, итого 16 байт)
+            sscanf(parentStr.c_str(), "%lf,%lf", &parentLon, &parentLat);
+            Node* parent = getNode(parentLon, parentLat, parentStr);  // Указатель на узел (8 байт)
+
+            while (getline(ss, edgeStr, ';')) {
+                double childLon, childLat, weight; // Переменные для координат и веса (3 double по 8 байт каждая, итого 24 байта)
+                sscanf(edgeStr.c_str(), "%lf,%lf,%lf", &childLon, &childLat, &weight);
+                Node* child = getNode(childLon, childLat, toKey(childLon, childLat));// Указатель на узел (8 байт)
+
+                parent->neighbors.emplace_back(child, weight); // Добавляем ребро (O(1)) (std::pair<Node*, double> занимает 16 байт: 8 байт на Node* и 8 байт на double)
+            }
+        }
+
+        file.close(); // Закрытие файла (O(1))
+    }
+
+    // Поиск ближайшего узла к заданной точке
+    Node* findClosestNode(double lat, double lon) {
+        Node* closest = nullptr; // Указатель на узел (8 байт)
+        double minDist = numeric_limits<double>::infinity(); // Минимальное расстояние (double 8 байт)
+
+        for (auto* node : nodes) { // Перебор всех узлов графа (O(V) по времени) Перебор всех узлов графа (каждый указатель Node* 8 байт)
+            double dist = sqrt(pow(node->lat - lat, 2) + pow(node->lon - lon, 2)); // Вычисление расстояния (O(1))
+            if (dist < minDist) { // Сравнение текущего расстояния с минимальным (O(1))
+                minDist = dist; // Обновление минимального расстояния (double 8 байт)
+                closest = node; // Обновление ближайшего узла (8 байт)
+            }
+        }
+
+        return closest; // Возвращаем ближайший узел (O(1))
+    }
+
+private:
+    // Получить узел из хэш-таблицы или создать новый
+    Node* getNode(double lon, double lat, const string& key) {
+        if (nodeMap.find(key) == nodeMap.end()) { // Проверка наличия узла в хэш-таблице (O(1))
+            Node* newNode = new Node{lon, lat}; // Создание нового узла (O(1) по памяти) Создание нового узла (sizeof(Node) = 24 байта + память для вектора)
+            nodes.push_back(newNode);          // Добавление в список узлов (O(1))  Добавление в список узлов (8 байт на указатель Node*)
+            nodeMap[key] = newNode;            // Добавление в хэш-таблицу (O(1)) Добавление в хэш-таблицу (32 байта на ключ + 8 байт на Node*)
+        }
+        }
+        return nodeMap[key]; // Возвращаем узел (O(1))
+    }
+
+    // Генерация ключа для узла на основе координат
+    string toKey(double lon, double lat) {
+        return to_string(lon) + "," + to_string(lat); // Преобразование координат в строку (O(1))
+    }
+};
+
+// Реализация DFS (Поиск в глубину)
+bool dfs(Node* current, Node* goal, unordered_set<Node*>& visited, double& distance) {
+    if (current == goal) return true; // Если достигли цели, возвращаем true (O(1))
+
+    visited.insert(current); // Помечаем текущий узел как посещённый (O(1))
+
+    for (auto& neighbor : current->neighbors) { // Перебор соседей узла (O(E) в худшем случае)
+        if (visited.find(neighbor.first) == visited.end()) { // Проверяем, посещён ли сосед (O(1))
+            distance += neighbor.second; // Добавляем вес ребра к общему расстоянию (O(1))
+            if (dfs(neighbor.first, goal, visited, distance)) { // Рекурсивный вызов для соседнего узла
+                return true; // Если путь найден, возвращаем true
+            }
+distance -= neighbor.second; // Откатываем расстояние, если путь не найден (O(1))
+        }
+    }
+
+    return false; // Если путь не найден, возвращаем false
 }
 
-// Определение структуры графа
-struct Graph {
-    std::unordered_map<std::string, Node*> nodes; // Хранилище узлов по ключу "долгота,широта"
+// Реализация BFS (Поиск в ширину)
+double bfs(Node* start, Node* goal) {
+    queue<pair<Node*, double>> q; // Очередь для BFS (O(V) памяти в худшем случае)  (std::queue 24 байта + std::pair<Node*, double> 16 байт)
+    unordered_set<Node*> visited; // Множество посещённых узлов (O(V) памяти) (std::unordered_set ~56 байт пустым, + 8 байт на Node*)
 
-    // Получить узел по координатам или создать его, если узел отсутствует
-    Node* get_or_create_node(double lon, double lat) {
-        std::string key = std::to_string(lon) + "," + std::to_string(lat);
-        if (nodes.find(key) == nodes.end()) {
-            nodes[key] = new Node{lon, lat};
-        }
-        return nodes[key];
-    }
+    q.push({start, 0.0}); // Добавляем начальный узел в очередь (O(1))
+    visited.insert(start); // Помечаем начальный узел как посещённый (O(1))
 
-    // Добавить ребро между двумя узлами с заданным расстоянием
-    void add_edge(double lon1, double lat1, double lon2, double lat2, double distance) {
-        Node* node1 = get_or_create_node(lon1, lat1);
-        Node* node2 = get_or_create_node(lon2, lat2);
-        node1->neighbors.push_back({node2, distance});
-    }
+    while (!q.empty()) { // Пока очередь не пуста (O(V + E) по времени)
+        auto [current, dist] = q.front(); // Получаем узел из начала очереди (O(1))  (std::pair<Node*, double> 16 байт)
+        q.pop(); // Удаляем узел из очереди (O(1)) (std::pair<double, Node*> 16 байт)
 
-    // Найти ближайший узел к заданным координатам
-    Node* find_closest_node(double lat, double lon) {
-        double min_distance = std::numeric_limits<double>::max();
-        Node* closest_node = nullptr;
+        if (current == goal) return dist; // Если достигли цели, возвращаем расстояние (O(1))
 
-        for (auto& pair : nodes) {
-            Node* node = pair.second;
-            double distance = haversine(lat, lon, node->lat, node->lon);
-            if (distance < min_distance) {
-                min_distance = distance;
-                closest_node = node;
-            }
-        }
-
-        return closest_node;
-    }
-
-    // Обход в ширину (BFS)
-    void bfs(Node* start) {
-        std::queue<Node*> q;
-        std::set<Node*> visited;
-
-        q.push(start);
-        visited.insert(start);
-
-        while (!q.empty()) {
-            Node* current = q.front();
-            q.pop();
-
-            std::cout << "Посещен узел: (" << current->lat << ", " << current->lon << ")\n";
-
-            for (auto neighbor : current->neighbors) {
-                if (visited.find(neighbor.first) == visited.end()) {
-                    q.push(neighbor.first);
-                    visited.insert(neighbor.first);
-                }
+        for (auto& neighbor : current->neighbors) { // Перебираем соседей узла (O(E))
+            if (!visited.count(neighbor.first)) { // Проверяем, посещён ли сосед (O(1))
+                visited.insert(neighbor.first); // Помечаем соседа как посещённого (O(1))
+                q.push({neighbor.first, dist + neighbor.second}); // Добавляем соседа в очередь (O(1))
             }
         }
     }
 
-    // Обход в глубину (DFS)
-    void dfs(Node* start) {
-        std::stack<Node*> s;
-        std::set<Node*> visited;
+    return -1.0; // Если путь не найден, возвращаем -1 (O(1))
+}
 
-        s.push(start);
+// Реализация алгоритма Дейкстры
+double dijkstra(Node* start, Node* goal, const vector<Node*>& nodes) {
+    unordered_map<Node*, double> distances; // Словарь расстояний (O(V) памяти)
+    for (auto* node : nodes) distances[node] = numeric_limits<double>::infinity(); // Инициализация расстояний (O(V))
+    distances[start] = 0.0; // Расстояние до начального узла равно 0 (O(1))
 
-        while (!s.empty()) {
-            Node* current = s.top();
-            s.pop();
+    priority_queue<pair<double, Node*>, vector<pair<double, Node*>>, greater<>> pq; // Очередь с приоритетом (O(V)) (~24 байта пустой объект)
+    pq.push({0.0, start}); // Добавляем начальный узел в очередь (O(log(V)))
 
-            if (visited.find(current) == visited.end()) {
-                std::cout << "Посещен узел: (" << current->lat << ", " << current->lon << ")\n";
-                visited.insert(current);
+    while (!pq.empty()) { // Пока очередь не пуста (O((V + E) * log(V)))
+        auto [currentDist, currentNode] = pq.top(); // Получаем узел с минимальным расстоянием (O(1)) (std::pair<double, Node*> 16 байт)
+        pq.pop(); // Удаляем узел из очереди (O(log(V)))
 
-                for (auto neighbor : current->neighbors) {
-                    s.push(neighbor.first);
-                }
+        if (currentNode == goal) return currentDist; // Если достигли цели, возвращаем расстояние (O(1)) (double 8 байт)
+
+        for (auto& [neighbor, weight] : currentNode->neighbors) { // Перебираем соседей узла (O(E)) (std::pair<Node*, double> 16 байт)
+            double newDist = currentDist + weight; // Вычисляем новое расстояние (O(1))
+            if (newDist < distances[neighbor]) { // Если расстояние меньше текущего, обновляем (O(1))
+                distances[neighbor] = newDist; // Обновляем расстояние (O(1))
+                pq.push({newDist, neighbor}); // Добавляем узел в очередь (O(log(V)))
             }
         }
     }
 
-    // Алгоритм Дейкстры
-    void dijkstra(Node* start) {
-        std::unordered_map<Node*, double> distances;
-        std::set<std::pair<double, Node*>> pq;
+    return -1.0; // Если путь не найден, возвращаем -1 (O(1))
+}
 
-        for (auto& pair : nodes) {
-            distances[pair.second] = std::numeric_limits<double>::max();
-        }
-        distances[start] = 0;
-        pq.insert({0, start});
+// Реализация алгоритма A*
+double aStar(Node* start, Node* goal, const vector<Node*>& nodes) {
+    auto heuristic = [](Node* a, Node* b) { // Эвристика для A* (O(1))
+        return sqrt(pow(a->lat - b->lat, 2) + pow(a->lon - b->lon, 2)); // Евклидово расстояние (O(1)) (double 8 байт)
+    };
 
-        while (!pq.empty()) {
-            Node* current = pq.begin()->second;
-            pq.erase(pq.begin());
+    unordered_map<Node*, double> gScore, fScore; // O(V) памяти для оценки стоимости пути
+    for (auto* node : nodes) {
+        gScore[node] = numeric_limits<double>::infinity(); // Инициализация gScore (O(V)) (double 8 байт)
+        fScore[node] = numeric_limits<double>::infinity(); // Инициализация fScore (O(V)) (double 8 байт)
+    }
+    gScore[start] = 0.0; // Стоимость пути до начального узла равна 0 (O(1))
+    fScore[start] = heuristic(start, goal); // Эвристика начального узла (O(1))
 
-            for (auto neighbor : current->neighbors) {
-                double new_distance = distances[current] + neighbor.second;
+    priority_queue<pair<double, Node*>, vector<pair<double, Node*>>, greater<>> pq; // Очередь с приоритетом (O(V) памяти)
+    pq.push({fScore[start], start}); // Добавляем начальный узел в очередь (O(log(V)))
 
-                if (new_distance < distances[neighbor.first]) {
-                    pq.erase({distances[neighbor.first], neighbor.first});
-                    distances[neighbor.first] = new_distance;
-                    pq.insert({new_distance, neighbor.first});
-                }
+    while (!pq.empty()) { // Пока очередь не пуста (O((V + E) * log(V)))
+        auto [_, current] = pq.top(); // Получаем узел с минимальным приоритетом (O(1))
+        pq.pop(); // Удаляем узел из очереди (O(log(V)))
+
+        if (current == goal) return gScore[current]; // Если достигли цели, возвращаем расстояние (O(1))
+for (auto& [neighbor, weight] : current->neighbors) { // Перебираем соседей (O(E))
+            double tentativeG = gScore[current] + weight; // Вычисляем временную оценку стоимости (O(1))
+            if (tentativeG < gScore[neighbor]) { // Если найден более короткий путь (O(1))
+                gScore[neighbor] = tentativeG; // Обновляем gScore (O(1))
+                fScore[neighbor] = tentativeG + heuristic(neighbor, goal); // Обновляем fScore (O(1))
+                pq.push({fScore[neighbor], neighbor}); // Добавляем узел в очередь (O(log(V)))
             }
-        }
-
-        for (auto& pair : distances) {
-            std::cout << "Расстояние до узла (" << pair.first->lat << ", " << pair.first->lon << ") = " << pair.second << " км\n";
         }
     }
 
-    // Алгоритм A*
-    void a_star(Node* start, Node* goal) {
-        std::unordered_map<Node*, double> g_cost;
-        std::unordered_map<Node*, double> f_cost;
-        std::set<std::pair<double, Node*>> pq;
-
-        for (auto& pair : nodes) {
-            g_cost[pair.second] = std::numeric_limits<double>::max();
-            f_cost[pair.second] = std::numeric_limits<double>::max();
-        }
-
-        g_cost[start] = 0;
-        f_cost[start] = haversine(start->lat, start->lon, goal->lat, goal->lon);
-        pq.insert({f_cost[start], start});
-
-        while (!pq.empty()) {
-            Node* current = pq.begin()->second;
-            pq.erase(pq.begin());
-
-            if (current == goal) {
-                std::cout << "Цель достигнута: (" << goal->lat << ", " << goal->lon << ")\n";
-                return;
-            }
-
-            for (auto neighbor : current->neighbors) {
-                double tentative_g_cost = g_cost[current] + neighbor.second;
-
-                if (tentative_g_cost < g_cost[neighbor.first]) {
-                    pq.erase({f_cost[neighbor.first], neighbor.first});
-                    g_cost[neighbor.first] = tentative_g_cost;
-                    f_cost[neighbor.first] = g_cost[neighbor.first] + haversine(neighbor.first->lat, neighbor.first->lon, goal->lat, goal->lon);
-                    pq.insert({f_cost[neighbor.first], neighbor.first});
-                }
-            }
-        }
-
-        std::cout << "Цель недостижима!\n";
-    }
-};
+    return -1.0; // Если путь не найден, возвращаем -1 (O(1))
+}
 
 int main() {
     Graph graph;
+    graph.loadFromFile("spb_graph.txt");
 
-    // Чтение файла spb_graph.txt
-    std::ifstream file("spb_graph.txt");
-    std::string line;
+    Node* start = graph.findClosestNode(59.884972, 30.368072); // Указатель на начальный узел (8 байт)
+    Node* goal = graph.findClosestNode(59.956248, 30.309215); // Указатель на начальный узел (8 байт)
 
-    while (std::getline(file, line)) {
-        std::istringstream iss(line);
-        std::string from, to_part;
+    unordered_set<Node*> visited;
+    double dfsDistance = 0.0;
 
-        // Разделяем строку на узел "откуда" и его соседей
-        std::getline(iss, from, ':');
-        double lon1, lat1;
-        sscanf(from.c_str(), "%lf,%lf", &lon1, &lat1);
-
-        // Обрабатываем всех соседей узла "откуда"
-        while (std::getline(iss, to_part, ';')) {
-            if (to_part.empty()) continue;
-            double lon2, lat2, distance;
-            sscanf(to_part.c_str(), "%lf,%lf,%lf", &lon2, &lat2, &distance);
-            graph.add_edge(lon1, lat1, lon2, lat2, distance);
-        }
-    }
-
-    // Координаты точки А и Б
-    double lonA = 30.308108, latA = 59.957238;
-    double lonB = 30.443688, latB = 59.914686;
-
-    // Поиск ближайших узлов для точки А
-    Node* closest_to_A = graph.find_closest_node(latA, lonA);
-
-    // Поиск ближайших узлов для точки Б
-    Node* closest_to_B = graph.find_closest_node(latB, lonB);
-
-    // Вывод ближайшего узла для точки А
-    if (closest_to_A) {
-        std::cout << "Ближайший узел к точке А: (" << closest_to_A->lat << ", " << closest_to_A->lon << ")\n";
+    cout << "DFS: ";
+    if (dfs(start, goal, visited, dfsDistance)) {
+        cout << "Расстояние = " << dfsDistance << endl;
     } else {
-        std::cout << "Не найден узел для точки А!\n";
+        cout << "Путь не найден" << endl;
     }
 
-    // Вывод ближайшего узла для точки Б
-    if (closest_to_B) {
-        std::cout << "Ближайший узел к точке Б: (" << closest_to_B->lat << ", " << closest_to_B->lon << ")\n";
-    } else {
-        std::cout << "Не найден узел для точки Б!\n";
-    }
-
-    // Выполнение алгоритмов
-    if (closest_to_A) {
-        std::cout << "\nОбход в ширину (BFS) от точки А:\n";
-        graph.bfs(closest_to_A);
-
-        std::cout << "\nОбход в глубину (DFS) от точки А:\n";
-        graph.dfs(closest_to_A);
-
-        std::cout << "\nКратчайшие пути от точки А (Дейкстра):\n";
-        graph.dijkstra(closest_to_A);
-
-        if (closest_to_B) {
-            std::cout << "\nАлгоритм A* от точки А до точки Б:\n";
-            graph.a_star(closest_to_A, closest_to_B);
-        }
-    }
+    cout << "BFS: " << bfs(start, goal) << endl;
+    cout << "Dijkstra: " << dijkstra(start, goal, graph.nodes) << endl;
+    cout << "A*: " << aStar(start, goal, graph.nodes) << endl;
 
     return 0;
 }
